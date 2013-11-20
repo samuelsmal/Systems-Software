@@ -52,7 +52,7 @@ void* match_patterns(void *arg)
 	std::string current_pattern;
 	u_long sequence_size {sequence->size()};
 	bool pattern_is_good {true};
-	
+
 	for (u_long i = range.begin; i < range.end; ++i)
 	{
 		size_t k = patterns->size();
@@ -77,7 +77,7 @@ void* match_patterns(void *arg)
 					found_patterns.push_back(i);
 ;				}
 			}
-			
+
 			if (!found_patterns.empty())
 			{
 				pthread_mutex_lock(&pattern_lock);
@@ -87,10 +87,10 @@ void* match_patterns(void *arg)
 
 		}
 	}
-	
+
 	pthread_exit(NULL);
 }
- 
+
 int main(int argc, char* argv[])
 {
 	if (argc != 5)
@@ -137,13 +137,13 @@ int main(int argc, char* argv[])
 
 	pattern_match_vector matches(patterns.size());
 	pthread_mutex_init(&pattern_lock, NULL);
-	
+
 	// Run the pattern matching.
 	if (mode_is_serial)
 	{
 		int		  err;
 		pthread_t thread;
-		
+
 		Arguments arguments{{0, sequence.size()}, &sequence, &patterns, &matches};
 		err = pthread_create(&thread, NULL, match_patterns, (void*)(&arguments));
 		if (err != 0) err_exit(err, "can't create thread!");
@@ -154,25 +154,29 @@ int main(int argc, char* argv[])
 	{
 		int 		err;
 		pthread_t 	threads[number_of_threads];
-		
+
 		long 		i;
 		u_long 		interval_delta = (u_long)ceil((double)sequence.size() / number_of_threads);
 		Arguments 	arguments{{0, 0}, &sequence, &patterns, &matches};
-		
+
 		for (i = 0; i < number_of_threads; ++i)
 		{
 			arguments.range.begin = arguments.range.end;
-			arguments.range.end = (arguments.range.end + interval_delta) < sequence.size() 
+			arguments.range.end = (arguments.range.end + interval_delta) < sequence.size()
 				? arguments.range.end + interval_delta : sequence.size();
 			err = pthread_create(&threads[i], NULL, match_patterns, (void*)(&arguments));
 			if (err != 0) err_exit(err, "can't create thread!");
-			err = pthread_join(threads[i], NULL);
+		}
+
+    for (i = 0; i < number_of_threads; ++i)
+		{
+      err = pthread_join(threads[i], NULL);
 			if (err != 0) err_exit(err, "can't join thread!");
 		}
-		
+
 	}
-	
-	
+
+
 	std::ofstream output_file("occurrences.txt");
 	for (int l = 0; l < matches.size(); ++l)
 	{

@@ -1,0 +1,30 @@
+*.workspace
+*.workspace.layout
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+
+*.depend
+
+*.pdf
+*.cbp
+*.layout
+*.txt
+
+*.cbp.save
+*.layout.save
+
+
+/bin
+bin/

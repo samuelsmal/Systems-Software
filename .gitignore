@@ -22,6 +22,8 @@
 *.layout
 *.txt
 
+*.save
+
 
 /bin
 bin/
