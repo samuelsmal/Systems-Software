@@ -22,8 +22,7 @@
 *.layout
 *.txt
 
-*.cbp.save
-*.layout.save
+*.save
 
 
 /bin

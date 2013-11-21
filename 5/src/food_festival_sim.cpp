@@ -14,25 +14,16 @@
 #include <pthread.h>
 #include <random>
 #include <list>
-#include <thread>
-#include <chrono>
+#include <time.h>
+
+#include "general_utils.h"
+#include "food_sim_util.h"
 
 using std::cout;
 using std::endl;
 using std::cin;
 
-pthread_mutex_t plate_lock = PTHREAD_MUTEX_INITIALIZER;
-std::list<bool> food_samples;
-
-class Rand_int {
- private:
-  std::uniform_int_distribution<>::param_type p;
-  auto r = std::bind(std::uniform_int_distribution<>{p}, std::default_random_engine{});
- public:
-  Rand_int(int lo, int hi) : p{lo, hi} {}
-  int operator()() const {return r();}
-
-};
+typedef std::list<bool> food_samples_t;
 
 void print_usage() {
   cout << "Usage: food_festival_sim [number of visitors] "
@@ -40,51 +31,6 @@ void print_usage() {
     << "[minimum of sleep time for visitor (ms)] "
     << "[maximum of sleep time for visitor (ms)]"
     << endl;
-}
-
-void err_exit(int error_code, const char* error_message) {
-  cout << "Error code:" << error_code << "\n\t" << error_message << endl;
-  exit(EXIT_FAILURE);
-}
-
-void* input_listener (void *) {
-  char user_input;
-
-  cout << "Press any button any time to stop the simulation" << endl;
-
-  do {
-    cin >> user_input;
-  } while (!user_input);
-
-  exit(EXIT_SUCCESS);
-}
-
-void fill_food () {
-  while(food_samples.size() < 10)
-    food_samples.push_back(true);
-}
-
-void* visitor (void* arg) {
-  while(true) {
-//    std::uniform_int_distribution<>* dist = (std::uniform_int_distribution<> *)arg;
-    Rand_int* r = (Rand_int *)arg;
-
-    pthread_mutex_lock(&plate_lock);
-    if (!food_samples.empty()) food_samples.pop_back();
-    phtread_mutex_unlock(&plate_lock);
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(r()));
-  }
-}
-
-void* attendant (void* arg) {
-  while (true) {
-    pthread_mutex_lock(&plate_lock);
-    fill_food();
-    phtread_mutex_unlock(&plate_lock);
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(*(int*)arg));
-  }
 }
 
 int main(int argc, char** argv) {
@@ -95,12 +41,10 @@ int main(int argc, char** argv) {
 //  const int visitor_min_sleep_time {std::atoi(argv[3])};
 //  const int visitor_max_sleep_time {std::atoi(argv[4])};
 
-  fill_food();
+  pthread_mutex_t plate_lock = PTHREAD_MUTEX_INITIALIZER;
 
-//  std::random_device rd;
-//  std::mt19937 gen(rd());
-//  std::uniform_int_distribution<> dis_visitor(std::atoi(argv[3]), std::atoi(argv[4]) + 1);
-
+  food_samples_t food_samples;
+  fill_food(food_samples);
 
   int err;
 
@@ -121,10 +65,10 @@ int main(int argc, char** argv) {
     err_exit(err, "Can't create thread!");
 
   // Visitors
-  Rand_int rand_vis {(std::atoi(argv[3]), std::atoi(argv[4]) + 1)};
   pthread_t visitors_id[number_of_visitors];
 
   for (int i {0}; i < number_of_visitors; ++i) {
+
     err = pthread_create(&visitors_id[i], NULL, visitor, (void *)rand_vis);
     if (err != 0)
       err_exit(err, "Can't create thread!");

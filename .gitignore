@@ -24,6 +24,9 @@
 
 *.save
 
+.cproject
+.project
+
 
 /bin
 bin/
