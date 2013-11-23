@@ -12,8 +12,6 @@
 #include <iostream>
 #include <vector>
 #include <random>
-#include <list>
-#include <memory>
 
 #include <cstdlib>
 #include <cstddef>
@@ -27,11 +25,8 @@
 using std::cout;
 using std::endl;
 using std::cin;
-using std::list;
 using std::vector;
 using std::size_t;
-using std::shared_ptr;
-using std::unique_ptr;
 
 // To ensure that I can convert the milliseconds to nanoseconds.
 typedef long long sleep_t;
@@ -39,9 +34,8 @@ typedef vector<pthread_t> thread_store_t;
 
 // Evil globals:
 thread_store_t threads;
-pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
-bool shouldAbort = false;
-vector<unsigned long> plate_counter;
+pthread_mutex_t thread_store_lock = PTHREAD_MUTEX_INITIALIZER;
+bool KEEP_RUNNING {true};
 
 void print_usage() {
   cout << "Usage: food_festival_sim [number of visitors] "
@@ -58,36 +52,43 @@ struct food_stand {
 	food_stand(unsigned s) :
 		num_of_samples(s) {}
 
-	~food_stand() {
-		cout << "food stand deleted" << endl;
-	}
+	~food_stand() {}
 };
 
 struct visitor {
 	int id;
-	sleep_t min_sleep;
-	sleep_t max_sleep;
+	unsigned long long number_of_getting_food;
+	sleep_t total_waiting_time;
+	const sleep_t min_sleep;
+	const sleep_t max_sleep;
 	food_stand* food_samples;
 
-	visitor(int i, sleep_t min_s, sleep_t max_s, food_stand* fs) :
-		id(i) , min_sleep(min_s), max_sleep(max_s), food_samples(fs) {}
-
-	~visitor() {
-		cout << "visitor " << id << " deleted" << endl;
-	}
+	visitor(food_stand* fs, sleep_t min_s, sleep_t max_s, int i) :
+		 food_samples(fs), min_sleep(min_s), max_sleep(max_s), id(i),  number_of_getting_food(0), total_waiting_time(0) {}
 };
 
 struct attendant {
 	sleep_t waiting_time;
 	food_stand* food_samples;
 
-	attendant(sleep_t wt, food_stand* fs) :
-		waiting_time(wt), food_samples(fs) {}
+	timespec delay;
+
+	attendant(food_stand* fs, sleep_t wt) :
+		waiting_time(wt), food_samples(fs) {
+        delay.tv_sec = waiting_time / 1000;
+        delay.tv_nsec = (long) (waiting_time - (delay.tv_sec * 1000)) * 1000000;
+
+        cout << "Attendant created" << endl;
+	}
+
+	~attendant() {
+		delete food_samples;
+	}
 };
 
 void* input_listener (void *);
 void init_attendant (food_stand* fs, sleep_t waiting_time);
-void init_visitors (food_stand* fs, int number_of_visitors, sleep_t min_sleep_time, sleep_t max_sleep_time);
+void init_visitors (food_stand* fs, int number_of_visitors, sleep_t min_sleep_time, sleep_t max_sleep_time, vector<visitor*>& visitor_store);
 
 void* run_attendant (void* arg);
 void* run_visitor (void* arg);
@@ -101,7 +102,7 @@ int main(int argc, char** argv) {
   const sleep_t visitor_min_sleep_time {std::atoll(argv[3])};
   const sleep_t visitor_max_sleep_time {std::atoll(argv[4])};
 
-  shared_ptr<food_stand> fs(new food_stand(10));
+  food_stand* fs = new food_stand(10);
 
   if (pthread_mutex_init(&fs->lock, NULL) != 0) {
 	  err_exit(0, "Couldn't init lock on food_stand");
@@ -111,43 +112,44 @@ int main(int argc, char** argv) {
   // Pthread creation
   //
   // Input listener
-  /*
   int err;
   pthread_t input_listener_id;
   err = pthread_create(&input_listener_id, NULL, input_listener, NULL);
   if (err != 0) {
 	err_exit(err, "Can't create thread!");
   } else {
-	pthread_mutex_lock(global_mutex);
+	pthread_mutex_lock(&thread_store_lock);
 	threads.push_back(input_listener_id);
-	pthread_mutex_unlock(global_mutex);
-  }*/
+	pthread_mutex_unlock(&thread_store_lock);
+  }
 
   // Attendant
+  init_attendant(fs, attendant_sleep_time);
 
+  // Visitors
+  vector<visitor*> visitors;
+  init_visitors(fs, number_of_visitors, visitor_min_sleep_time, visitor_max_sleep_time, visitors);
 
   //
   // Pthread joining
   //
-/*
   for (size_t i {0}, e {threads.size()}; i < e; ++i) {
 	  int err = pthread_join(threads[i], NULL);
 	  if (err != 0)
 	    err_exit(err, "Can't join with thread!");
-  }*/
+  }
+
+  // Output
+  cout << "Visitor Id\tAte that much\tAverage waiting time [ms]" << endl;
+  for (size_t i {0}, e {visitors.size()}; i < e; ++i) {
+	  cout << i << "\t" << visitors[i]->number_of_getting_food
+			  << "\t" << (double)visitors[i]->total_waiting_time / visitors[i]->number_of_getting_food
+			  << endl;
+
+	  delete visitors[i];
+  }
+
   return 0;
-}
-
-void* input_listener (void *) {
-  char user_input;
-
-  cout << "Press any button any time to stop the simulation" << endl;
-
-  do {
-    cin >> user_input;
-  } while (!user_input);
-
-  exit(EXIT_SUCCESS);
 }
 
 void init_attendant (food_stand* fs, sleep_t waiting_time) {
@@ -160,15 +162,15 @@ void init_attendant (food_stand* fs, sleep_t waiting_time) {
 	if (err != 0) {
 		err_exit(err, "Can't create thread!");
 	} else {
-		pthread_mutex_lock(global_mutex);
+		pthread_mutex_lock(&thread_store_lock);
 		threads.push_back(a_id);
-		pthread_mutex_unlock(global_mutex);
+		pthread_mutex_unlock(&thread_store_lock);
 	}
 }
 
-void init_visitors (food_stand* fs, int number_of_visitors, sleep_t min_sleep_time, sleep_t max_sleep_time) {
+void init_visitors (food_stand* fs, int number_of_visitors, sleep_t min_sleep_time, sleep_t max_sleep_time, vector<visitor*>& visitor_store) {
 	while (number_of_visitors--) {
-		unique_ptr<visitor> v (new visitor(number_of_visitors, fs, min_sleep_time, max_sleep_time));
+		visitor* v  = new visitor(fs, min_sleep_time, max_sleep_time, number_of_visitors);
 
 		pthread_t v_id;
 
@@ -176,9 +178,65 @@ void init_visitors (food_stand* fs, int number_of_visitors, sleep_t min_sleep_ti
 		if (err != 0) {
 			err_exit(err, "Can't create thread!");
 		} else {
-			pthread_mutex_lock(global_mutex);
+			pthread_mutex_lock(&thread_store_lock);
 			threads.push_back(v_id);
-			pthread_mutex_unlock(global_mutex);
+			visitor_store.push_back(v);
+			pthread_mutex_unlock(&thread_store_lock);
 		}
 	}
+}
+
+void* input_listener (void *) {
+  char user_input;
+
+  cout << "Press any button any time to stop the simulation" << endl;
+  cin >> user_input;
+
+  KEEP_RUNNING = false;
+  return static_cast<void*>(0);
+}
+
+void* run_attendant(void* arg) {
+	attendant* a {static_cast<attendant*>(arg)};
+
+	while (KEEP_RUNNING) {
+		pthread_mutex_lock(&(a->food_samples->lock));
+		if (a->food_samples->num_of_samples < 10) {
+			a->food_samples->num_of_samples = 10;
+			cout << "Attendant filled up the plates." << endl;}
+		pthread_mutex_unlock(&(a->food_samples->lock));
+
+		nanosleep(&(a->delay), NULL);
+	}
+
+	delete a;
+
+	return static_cast<void*>(0);
+}
+
+void* run_visitor(void* arg) {
+	visitor* v {static_cast<visitor*>(arg)};
+
+	while (KEEP_RUNNING) {
+		pthread_mutex_lock(&(v->food_samples->lock));
+		if (v->food_samples->num_of_samples > 0) {
+			--(v->food_samples->num_of_samples);
+			++(v->number_of_getting_food);
+			cout << "Visitor " << v->id << " took a sample. " << v->food_samples->num_of_samples << " samples left." << endl;
+		}
+		pthread_mutex_unlock(&(v->food_samples->lock));
+
+		timespec delay;
+		unsigned int diff = v->max_sleep - v->min_sleep;
+		sleep_t delay_ms = v->min_sleep;
+		if (diff != 0) {
+				delay_ms += rand() % diff; // Pretty bad algorithm... Since modulo will not preserve the pseudorandomness.
+		}
+		delay.tv_sec = delay_ms / 1000;
+		delay.tv_nsec = (delay_ms - (delay.tv_sec * 1000)) * 1000000;
+		v->total_waiting_time += delay_ms;
+		nanosleep(&delay, NULL);
+	}
+
+	return static_cast<void*>(0);
 }
