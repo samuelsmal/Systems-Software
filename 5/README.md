@@ -14,13 +14,13 @@ It uses an additional check before requesting the lock. But this only reduces th
 I use four (plus one master thread) different kind of threads (or threads which execute four different functions):
 
 * Input
-	void* handleInput(void *);
+	`void* handleInput(void *);`
 * Handling the attendant
-	void* handleAttendant(void* arg);
+	`void* handleAttendant(void* arg);`
 * Handling the visitors individual behaviour
-	void* handleVisitor(void* arg);
+	`void* handleVisitor(void* arg);`
 * Handling the visitors' queue
-	void* handleFoodDistribution(void* arg);
+	`void* handleFoodDistribution(void* arg);`
 	
 The only complicated part is the interplay between handleVisitor and handleFoodDistribution:
 Each visitor enqueues himself, is dequeued by the queue and then start to eat. Then he enqueues himself again.
