@@ -1,4 +1,4 @@
-﻿#README.txt
+﻿#README.md
 
 The program terminates only if the user enters any key and hits ENTER.
 
